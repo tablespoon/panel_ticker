@@ -51,6 +51,7 @@ tradingActive() {
 
 getQuote() {
 	if [[ ! $1 ]]; then
+		echo "Error: no symbol supplied"
 		return 1
 	fi
 
