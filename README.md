@@ -3,7 +3,7 @@ Stock ticker intended for use with GNOME 3 and the Executor plugin, though other
 
 ![screenshot](screenshot.png?raw=true "Screenshot")
 
-# Instructions for intended use
+# Instructions for intended application
 
 Install Executor (https://extensions.gnome.org/extension/2932/executor/) and configure it to run panel_ticker every second.
 
