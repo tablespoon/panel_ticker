@@ -1,0 +1,175 @@
+#!/bin/bash
+ 
+
+SYMBOL=${1:-nasdaq:tsla}
+SLEEP_TIME=180 # minimum number of seconds between queries; should be long enough to avoid being blocked
+START_TIME=4:00
+OPENING_BELL_TIME=9:30
+CLOSING_BELL_TIME=16:00
+END_TIME=20:00
+OUTPUT_FILE="/tmp/$(basename $0)-${SYMBOL}"
+
+USER_AGENT="Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:94.0) Gecko/20100101 Firefox/94.0"
+DELIM="#"
+
+
+convertToSeconds() {
+	if [[ ! $1 ]]; then
+		return 1
+	fi
+
+	local time
+	readarray -td : time <<<"$1"
+
+	echo $(( time[0]*60**2 + time[1]*60 + time[2] ))
+}
+
+
+convertFromSeconds() {
+	if [[ ! $1 ]]; then
+		return 1
+	fi
+
+	local hours=$(( $1 / 3600 ))
+	local minutes=$(( ($1 % 3600) / 60 ))
+	local seconds=$(( $1 % 60 ))
+
+	printf "%0d:%02d:%02d\n" $hours $minutes $seconds
+}
+
+
+
+tradingActive() {
+	if [[ $day == [1-5] ]]; then
+		if (( current_second_in_day >= daily_start_second && current_second_in_day < daily_end_second )); then
+			return 0
+		fi
+	fi
+	return 1
+}
+
+
+getQuote() {
+	if [[ ! $1 ]]; then
+		return 1
+	fi
+
+	if [[ ! -f "$OUTPUT_FILE" ]] || ( (( current_second - $(date -r "$OUTPUT_FILE" +%s) >= SLEEP_TIME )) && tradingActive ); then
+		quote=$(curl -s --compressed -A "$USER_AGENT" -L "https://www.google.com/search?q=$1" \
+			| grep -Po '(?<=data-attrid="Company Name">).+' \
+			| grep -Po '.+%\)(?=</span>)' \
+			| sed -r 's/−/-/g' \
+			| tr -dc "[[:graph:][:blank:]]" \
+			| sed -r 's/"tfDdVe">[^<]+<\/span>//g' \
+			| sed -r 's/<[^>]+>|&#?[[:alnum:]]+;/'"$DELIM"'/g' \
+			| sed -r 's/'"$DELIM"' | '"$DELIM"'/'"$DELIM"'/g' | tr -s $DELIM \
+			| cut --complement -f 3,6-14,16 -d "$DELIM"
+		)
+		if [[ $quote ]]; then
+			echo -n "$quote" >"$OUTPUT_FILE"
+		fi
+	else
+		quote=$(<"$OUTPUT_FILE")
+	fi
+
+	readarray -td "$DELIM" quote <<<"$quote"
+
+	# can be used to output specific fields by name
+	local i
+	for field in name day_price day_change day_percent quote_time ext_label ext_price ext_change ext_percent; do
+		declare -g "$field"="${quote[$i]}"
+		((i++))
+	done
+}
+
+
+currentPhase() {
+	if [[ $day == [1-5] ]]; then
+		if (( current_second_in_day < daily_start_second || current_second_in_day >= daily_end_second )); then
+			echo 0 # closed
+		elif (( current_second_in_day >= daily_start_second && current_second_in_day < opening_bell_second )); then
+			echo 1 # pre-market
+		elif (( current_second_in_day >= opening_bell_second && current_second_in_day < closing_bell_second )); then
+			echo 2 # open
+		elif (( current_second_in_day >= closing_bell_second && current_second_in_day < daily_end_second )); then
+			echo 3 # after hours
+		fi
+	else
+		echo 0 # closed
+	fi
+}
+
+
+timeToNextPhase() {
+	local currentPhase=$(currentPhase)
+	case $currentPhase in
+		0) # closed
+			if (( current_second_in_day < daily_start_second )) && [[ $day == [1-5] ]]; then
+				next_open_day=today
+			elif [[ $day == [0-4] ]]; then
+				next_open_day=tomorrow
+			else
+				next_open_day=monday
+			fi
+		
+			exact_open_second=$(TZ="America/New_York" date -d "$next_open_day $START_TIME" +%s)
+			echo $(( exact_open_second - current_second ))
+			;;
+		1) # pre-market
+			echo $(( opening_bell_second - current_second_in_day )) ;;
+		2) # open
+			echo $(( closing_bell_second - current_second_in_day )) ;;
+		3) # after hours
+			echo $(( daily_end_second - current_second_in_day )) ;;
+	esac
+}
+
+
+outputCurrentPhase() {
+	local currentPhase=$(currentPhase)
+	case $currentPhase in
+		0) # closed
+			echo "closed" ;;
+		1) # pre-market
+			echo "pre-market" ;;
+		2) # open
+			echo "open" ;;
+		3) # after hours
+			echo "after hours" ;;
+	esac
+}
+
+
+outputNextPhase() {
+	local currentPhase=$(currentPhase)
+	case $currentPhase in
+		0) # closed
+			echo "trading begins" ;;
+		1) # pre-market
+			echo "opening bell" ;;
+		2) # open
+			echo "closing bell" ;;
+		3) # after hours
+			echo "trading ends" ;;
+	esac
+}
+	
+
+output() {
+	#printf "%s   -   %s\n" "${quote[*]}" "$(outputNextPhase) in $(convertFromSeconds $(timeToNextPhase))"
+	printf "%s   -:-   %s   -:-   %s\n" "$name" "${ext_price:-$day_price} ${ext_change:-$day_change} ${ext_percent:-$day_percent}" "$(outputCurrentPhase); $(outputNextPhase) in $(convertFromSeconds $(timeToNextPhase))"
+}
+
+
+day=$(TZ="America/New_York" date +%w)
+current_second=$(date +%s)
+current_second_in_day=$(TZ="America/New_York" date +%_H*60**2+%_M*60+%_S)
+current_second_in_day=$((current_second_in_day))
+daily_start_second=$(convertToSeconds $START_TIME)
+opening_bell_second=$(convertToSeconds $OPENING_BELL_TIME)
+closing_bell_second=$(convertToSeconds $CLOSING_BELL_TIME)
+daily_end_second=$(convertToSeconds $END_TIME)
+seconds_in_day=$(convertToSeconds 24)
+
+
+getQuote $SYMBOL && output
