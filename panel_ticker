@@ -79,7 +79,7 @@ getQuote() {
 	# can be used to output specific fields by name
 	local i
 	for field in name day_price day_change day_percent quote_time ext_label ext_price ext_change ext_percent; do
-		declare -g "$field"="${quote[$i]}"
+		declare -g "$field"="${quote[$i]//$'\n'}"
 		((i++))
 	done
 }
