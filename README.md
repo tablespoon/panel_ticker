@@ -1,6 +1,8 @@
 # panel_ticker
 Stock ticker intended for use with GNOME 3 and the Executor plugin, though other single-line output script repeaters may exist and could be compatible.
 
+![screenshot](screenshot.png?raw=true "Screenshot")
+
 # Intended instructions:
 
 Install Executor (https://extensions.gnome.org/extension/2932/executor/) and configure it to run panel_ticker every second.
