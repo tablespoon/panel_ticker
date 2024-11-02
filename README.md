@@ -15,4 +15,4 @@ For certain ambiguous symbols, providing the nasdaq: tag will cause Google to re
 
 ![screenshot_config](screenshot_config.png?raw=true "Screenshot of config")
 
-Since open APIs have become scarce, this functions by scraping Google. In order to be courteous and (avoid to getting blocked), the script is configured to query no more than once every 180 seconds.
+Since open APIs have become scarce, this functions by scraping Google. In order to be courteous (and to avoid getting blocked), the script is configured to query no more than once every 180 seconds.
