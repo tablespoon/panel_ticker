@@ -165,7 +165,7 @@ output() {
 
 
 date_output=$(TZ="America/New_York" date "+%w$DELIM%s$DELIM%_H*60**2+%_M*60+%_S")
-readarray -td "$DELIM" date_output <<<"${date_output[@]}"
+readarray -td "$DELIM" date_output <<<"$date_output"
 day=${date_output[0]}
 current_second=${date_output[1]}
 current_second_in_day=$(( ${date_output[2]} ))
