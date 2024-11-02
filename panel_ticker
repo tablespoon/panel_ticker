@@ -1,5 +1,6 @@
 #!/bin/bash
  
+# https://github.com/tablespoon/panel_ticker
 
 SYMBOL=$1
 SLEEP_TIME=180 # minimum number of seconds between queries; should be long enough to avoid being blocked
