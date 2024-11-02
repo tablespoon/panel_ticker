@@ -15,4 +15,4 @@ For certain ambiguous symbols, providing the nasdaq: tag will cause Google to re
 
 ![screenshot_config](screenshot_config.png?raw=true "Screenshot of config")
 
-Google will be queried no more than once every 180 seconds. This is configurable in the script, but setting the frequency too high will cause Google to block your queries.
+Since open APIs have become scarce, this functions by scraping Google. In order to be courteous and (avoid to getting blocked), the script is configured to query no more than once every 180 seconds.
