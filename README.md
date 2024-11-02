@@ -13,4 +13,6 @@ Any single ticker symbol may be supplied to panel_ticker as an argument:
 For certain ambiguous symbols, providing the nasdaq: tag will cause Google to return stock information more reliably:
 * `path/to/panel_ticker nasdaq:ford`
 
+![screenshot_config](screenshot_config.png?raw=true "Screenshot of config")
+
 Google will be queried no more than once every 180 seconds. This is configurable in the script, but setting the frequency too high will cause Google to block your queries.
