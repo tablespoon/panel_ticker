@@ -10,7 +10,7 @@ Install Executor (https://extensions.gnome.org/extension/2932/executor/) and con
 Any single ticker symbol may be supplied to panel_ticker as an argument:
 * `path/to/panel_ticker aapl`
 
-For certain ambiguous symbols, providing the nasdaq: tag will encourage Google to return stock information more reliably:
+For certain ambiguous symbols, providing the `nasdaq:` tag will encourage Google to return stock information more reliably:
 * `path/to/panel_ticker nasdaq:ford`
 
 ![screenshot_config](screenshot_config.png?raw=true "Screenshot of config")
