@@ -157,7 +157,7 @@ outputNextPhase() {
 
 output() {
 	#printf "%s   -   %s\n" "${quote[*]}" "$(outputNextPhase) in $(convertFromSeconds $(timeToNextPhase))"
-	printf "%s   -:-   %s   -:-   %s\n" "$name" "${ext_price:-$day_price} ${ext_change:-$day_change} ${ext_percent:-$day_percent}" "$(outputCurrentPhase); $(outputNextPhase) in $(convertFromSeconds $(timeToNextPhase))"
+	printf "%s    •    %s    •    %s\n" "$name" "${ext_price:-$day_price} ${ext_change:-$day_change} ${ext_percent:-$day_percent}" "$(outputCurrentPhase); $(outputNextPhase) in $(convertFromSeconds $(timeToNextPhase))"
 }
 
 
