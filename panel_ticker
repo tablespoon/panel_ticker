@@ -156,8 +156,9 @@ outputNextPhase() {
 	
 
 output() {
-	#printf "%s   -   %s\n" "${quote[*]}" "$(outputNextPhase) in $(convertFromSeconds $(timeToNextPhase))"
-	printf "%s   : :   %s   : :   %s\n" "$name" "${ext_price:-$day_price} ${ext_change:-$day_change} ${ext_percent:-$day_percent}" "$(outputCurrentPhase); $(outputNextPhase) in $(convertFromSeconds $(timeToNextPhase))"
+	local price_string="${ext_price:-$day_price} ${ext_change:-$day_change} ${ext_percent:-$day_percent}"
+	local status_string="$(outputCurrentPhase); $(outputNextPhase) in $(convertFromSeconds $(timeToNextPhase))"
+	printf "%s   : :   %s   : :   %s\n" "$name" "$price_string" "$status_string"
 }
 
 
