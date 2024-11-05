@@ -1,5 +1,5 @@
 # panel_ticker
-Stock ticker intended for use with GNOME 3 and the Executor shell extension, though other single-line output script repeaters may exist and could be compatible.
+Single-line, scraping-powered stock ticker intended for, but not limited to, use with GNOME Shell and the Executor shell extension.
 
 ![screenshot](screenshot.png?raw=true "Screenshot")
 
