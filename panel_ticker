@@ -2,7 +2,7 @@
  
 # https://github.com/tablespoon/panel_ticker
 
-SYMBOL=$1
+SYMBOL=${1^^}
 SLEEP_TIME=10 # minimum number of seconds between queries
 START_TIME=4:00
 OPENING_BELL_TIME=9:30
