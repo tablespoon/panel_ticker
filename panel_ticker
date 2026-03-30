@@ -7,6 +7,7 @@ SYMBOL_COLOR="#BBBBBB"
 GREEN_COLOR="lightgreen"
 RED_COLOR="#FF5555"
 SUBTEXT_SIZE="9pt"
+SEPARATOR="   : :   "
 
 SYMBOL=${1^^}
 SLEEP_TIME=10 # minimum number of seconds between queries
@@ -176,6 +177,7 @@ outputNextPhase() {
 
 
 output() {
+	local span_params
 	local color="white"
 	local arrow="▶"
 	local sign=" "
@@ -191,16 +193,26 @@ output() {
 
 	local status_string="$(outputCurrentPhase); $(outputNextPhase) in $(convertFromSeconds $(timeToNextPhase))"
 
-	local span_params="size='9pt'"
 
-	printf "<executor.markup.true>%s <span size='%s' color='%s'>(%s)</span>" \
-		"$name" "$SUBTEXT_SIZE" "$SYMBOL_COLOR" "$SYMBOL" 
-	printf "   : :   "
-	printf "$%.2f  <span size='%s' color='%s'>%s%s%.2f (%.2f%%)</span>" \
-		"$price" "$SUBTEXT_SIZE" "$color" "$arrow" "$sign" "$price_diff" "$percent_diff"
-	printf "   : :   "
+
+	# output security
+	span_params="size='$SUBTEXT_SIZE' color='$SYMBOL_COLOR'"
+	printf "<executor.markup.true>%s <span %s>(%s)</span>" \
+		"$name" "$span_params" "$SYMBOL"
+
+	printf "$SEPARATOR"
+
+	# output price details
+	span_params="size='$SUBTEXT_SIZE' color='$color'"
+	printf "$%.2f  <span %s>%s%s%.2f (%.2f%%)</span>" \
+		"$price" "$span_params" "$arrow" "$sign" "$price_diff" "$percent_diff"
+
+	printf "$SEPARATOR"
+
+	# output market status
 	printf "%s\n" \
 		 "$status_string"
+
 
 
 	if [[ $current_phase != $logged_phase ]]; then
