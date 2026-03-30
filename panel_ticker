@@ -2,6 +2,12 @@
  
 # https://github.com/tablespoon/panel_ticker
 
+
+SYMBOL_COLOR="#BBBBBB"
+GREEN_COLOR="lightgreen"
+RED_COLOR="#FF5555"
+SUBTEXT_SIZE="9pt"
+
 SYMBOL=${1^^}
 SLEEP_TIME=10 # minimum number of seconds between queries
 START_TIME=4:00
@@ -174,24 +180,24 @@ output() {
 	local arrow="▶"
 	local sign=" "
 	if (( $(bc -l <<<"$price_diff > 0") )); then
-		color="lightgreen"
+		color="$GREEN_COLOR"
 		arrow="▲"
 		sign="+"
 	elif (( $(bc -l <<<"$price_diff < 0") )); then
-		color="red"
+		color="$RED_COLOR"
 		arrow="▼"
 		sign=""
 	fi
 
 	local status_string="$(outputCurrentPhase); $(outputNextPhase) in $(convertFromSeconds $(timeToNextPhase))"
 
-	local span_params="size='9pt' alpha='85%%'"
+	local span_params="size='9pt'"
 
-	printf "<executor.markup.true>%s <span %s>(%s)</span>" \
-		"$name" "$span_params" "$SYMBOL" 
+	printf "<executor.markup.true>%s <span size='%s' color='%s'>(%s)</span>" \
+		"$name" "$SUBTEXT_SIZE" "$SYMBOL_COLOR" "$SYMBOL" 
 	printf "   : :   "
-	printf "$%.2f  <span %s color='%s'>%s%s%.2f (%.2f%%)</span>" \
-		"$price" "$span_params" "$color" "$arrow" "$sign" "$price_diff" "$percent_diff"
+	printf "$%.2f  <span size='%s' color='%s'>%s%s%.2f (%.2f%%)</span>" \
+		"$price" "$SUBTEXT_SIZE" "$color" "$arrow" "$sign" "$price_diff" "$percent_diff"
 	printf "   : :   "
 	printf "%s\n" \
 		 "$status_string"
