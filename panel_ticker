@@ -122,8 +122,9 @@ getQuoteFromAPI() {
 	[[ ! "$json_quotes" ]] && error "Unable to fetch json_quotes"
 
 	price=$(jq -r '(.last_extended_hours_trade_price // .last_trade_price)' <<<"$json_quotes")
+	price=$(printf "$%.2f" "$price")
 	prev_close=$(jq -r '.previous_close' <<<"$json_quotes")
-	price_diff=$(bc -l <<<"$price - $prev_close")
+	price_diff=$(bc -l <<<"${price#$} - $prev_close")
 	percent_diff=$(bc -l <<<"$price_diff / $prev_close * 100")
 }
 
@@ -245,6 +246,8 @@ outputFromAPI() {
 	price_diff=${price_diff#-}
 	percent_diff=${percent_diff#-}
 
+	diff_string=$(printf "%s$%.2f (%s%.2f%%)" "$sign" "$price_diff" "$sign" "$percent_diff")
+
 	local status_string="$(outputCurrentPhase); $(outputNextPhase) in $(convertFromSeconds $(timeToNextPhase))"
 
 
@@ -258,8 +261,8 @@ outputFromAPI() {
 
 	# output price details
 	span_params="size='$SUBTEXT_SIZE' color='$color'"
-	printf "$%.2f  <span %s>%s%s$%.2f (%s%.2f%%)</span>" \
-		"$price" "$span_params" "$arrow" "$sign" "$price_diff" "$sign" "$percent_diff"
+	printf "%s  <span %s>%s%s</span>" \
+		"$price" "$span_params" "$arrow" "$diff_string"
 
 	printf "$SEPARATOR"
 
@@ -328,6 +331,7 @@ outputFromBonfire() {
 		printf "%s\n%s\n%s" "$json_instruments" "$json_quotes" "$current_phase" >"$OUTPUT_FILE"
 	fi
 }
+
 
 
 if [[ ! -f "$OUTPUT_FILE" ]]; then
