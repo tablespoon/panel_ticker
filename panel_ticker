@@ -2,6 +2,7 @@
  
 # https://github.com/tablespoon/panel_ticker
 
+USE_BONFIRE=1
 
 SYMBOL_COLOR="#BBBBBB"
 GREEN_COLOR="lightgreen"
@@ -68,9 +69,9 @@ okayToQuery() {
 
 tradingActive() {
 	if [[ $day == [1-5] ]]; then
-#		if [[ "$all_day_tradability" == "tradable" ]]; then
-#			return 0
-#		fi
+		if [[ "$USE_BONFIRE" == [1yY] && "$all_day_tradability" == "tradable" ]]; then
+			return 0
+		fi
 		if (( current_second_in_day >= daily_start_second && current_second_in_day < daily_end_second )); then
 			return 0
 		fi
@@ -79,7 +80,8 @@ tradingActive() {
 }
 
 
-getQuote() {
+
+getInstruments() {
 	[[ ! $1 ]] && error "No symbol supplied"
 
 	if [[ ! "$json_instruments" ]]; then
@@ -88,9 +90,28 @@ getQuote() {
 	fi
 	[[ ! "$json_instruments" ]] && error "Unable to fetch json_instruments"
 	
-	name=$(jq -r '.results[0].simple_name' <<<"$json_instruments")
-	all_day_tradability=$(jq -r '.results[0].all_day_tradability' <<<"$json_instruments")
+	local -a jq_lines
+	readarray -t jq_lines <<<"$(jq -r '.results[0] | .simple_name, .all_day_tradability, .id' <<<"$json_instruments")"
+	name=${jq_lines[0]}
+	all_day_tradability=${jq_lines[1]}
+	instrument_id=${jq_lines[2]}
+}
 
+
+
+getQuote() {
+	case $USE_BONFIRE in
+		[1yY])	getQuoteFromBonfire $@ ;;
+		*)	getQuoteFromAPI $@ ;;
+	esac
+}
+
+
+
+getQuoteFromAPI() {
+	[[ ! $1 ]] && error "No symbol supplied"
+
+	getInstruments $1
 	
 	if [[ ! "$json_quotes" ]] || okayToQuery; then
 		json_quotes=$(query "https://api.robinhood.com/marketdata/quotes/$1/")
@@ -104,6 +125,29 @@ getQuote() {
 	prev_close=$(jq -r '.previous_close' <<<"$json_quotes")
 	price_diff=$(bc -l <<<"$price - $prev_close")
 	percent_diff=$(bc -l <<<"$price_diff / $prev_close * 100")
+}
+
+
+
+getQuoteFromBonfire() {
+	[[ ! $1 ]] && error "No symbol supplied"
+
+	getInstruments $1
+	
+	[[ ! $instrument_id ]] && error "Unable to determine instrument_id"
+
+	if [[ ! "$json_quotes" ]] || okayToQuery; then
+		json_quotes=$(query "https://bonfire.robinhood.com/instruments/$instrument_id/detail-page-live-updating-data/?display_span=day&hide_extended_hours=false")
+		write_needed=1
+	else
+		json_quotes=$(sed -n 2p "$OUTPUT_FILE")
+	fi
+	[[ ! "$json_quotes" ]] && error "Unable to fetch json_quotes"
+
+	local -a jq_lines
+	readarray -t jq_lines <<<"$(jq -r '.chart_section.default_display | .primary_value.value, .tertiary_value.main.value // .secondary_value.main.value' <<<"$json_quotes")"
+	price=${jq_lines[0]}
+	diff_string=${jq_lines[1]}
 }
 
 
@@ -177,6 +221,14 @@ outputNextPhase() {
 
 
 output() {
+	case $USE_BONFIRE in
+		[1yY])	outputFromBonfire $@ ;;
+		*)	outputFromAPI $@ ;;
+	esac
+}
+
+
+outputFromAPI() {
 	local span_params
 	local color="white"
 	local arrow="▶"
@@ -188,8 +240,10 @@ output() {
 	elif (( $(bc -l <<<"$price_diff < 0") )); then
 		color="$RED_COLOR"
 		arrow="▼"
-		sign=""
+		sign="-"
 	fi
+	price_diff=${price_diff#-}
+	percent_diff=${percent_diff#-}
 
 	local status_string="$(outputCurrentPhase); $(outputNextPhase) in $(convertFromSeconds $(timeToNextPhase))"
 
@@ -204,8 +258,58 @@ output() {
 
 	# output price details
 	span_params="size='$SUBTEXT_SIZE' color='$color'"
-	printf "$%.2f  <span %s>%s%s%.2f (%s%.2f%%)</span>" \
+	printf "$%.2f  <span %s>%s%s$%.2f (%s%.2f%%)</span>" \
 		"$price" "$span_params" "$arrow" "$sign" "$price_diff" "$sign" "$percent_diff"
+
+	printf "$SEPARATOR"
+
+	# output market status
+	printf "%s\n" \
+		 "$status_string"
+
+
+
+	if [[ $current_phase != $logged_phase ]]; then
+		write_needed=1
+	fi
+
+
+	if [[ $write_needed -eq 1 ]]; then
+		printf "%s\n%s\n%s" "$json_instruments" "$json_quotes" "$current_phase" >"$OUTPUT_FILE"
+	fi
+}
+
+
+outputFromBonfire() {
+	local span_params
+	local color="white"
+	local arrow="▶"
+	case ${diff_string:0:1} in
+		+)
+			color="$GREEN_COLOR"
+			arrow="▲"
+		;;
+		-)
+			color="$RED_COLOR"
+			arrow="▼"
+		;;
+	esac
+
+	local status_string="$(outputCurrentPhase); $(outputNextPhase) in $(convertFromSeconds $(timeToNextPhase))"
+
+
+
+	# output security
+	span_params="size='$SUBTEXT_SIZE' color='$SYMBOL_COLOR'"
+	printf "<executor.markup.true>%s <span %s>(%s)</span>" \
+		"$name" "$span_params" "$SYMBOL"
+
+	printf "$SEPARATOR"
+
+	# output price details
+	span_params="size='$SUBTEXT_SIZE' color='$color'"
+	printf "%s  <span %s>%s%s</span>" \
+		"$price" "$span_params" "$arrow" "$diff_string"
 
 	printf "$SEPARATOR"
 
