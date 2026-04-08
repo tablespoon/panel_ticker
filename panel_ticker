@@ -204,8 +204,8 @@ output() {
 
 	# output price details
 	span_params="size='$SUBTEXT_SIZE' color='$color'"
-	printf "$%.2f  <span %s>%s%s%.2f (%.2f%%)</span>" \
-		"$price" "$span_params" "$arrow" "$sign" "$price_diff" "$percent_diff"
+	printf "$%.2f  <span %s>%s%s%.2f (%s%.2f%%)</span>" \
+		"$price" "$span_params" "$arrow" "$sign" "$price_diff" "$sign" "$percent_diff"
 
 	printf "$SEPARATOR"
 
