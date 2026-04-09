@@ -21,6 +21,8 @@ OUTPUT_FILE="/tmp/$(basename $0)-${SYMBOL}"
 USER_AGENT="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)"
 DELIM="#"
 
+DATA=(name instrument_id all_day_tradability price diff_string logged_phase)
+
 
 error() {
 	echo "$0 Error: $@" 1>&2
@@ -29,7 +31,21 @@ error() {
 
 
 query() {
-	curl -s --compressed -A "$USER_AGENT" -L "$1"
+	curl -s "$1" \
+	  --compressed \
+	  -H 'User-Agent: Mozilla/5.0 (X11; Linux x86_64; rv:149.0) Gecko/20100101 Firefox/149.0' \
+	  -H 'Accept: */*' \
+	  -H 'Accept-Language: en-US,en;q=0.9' \
+	  -H 'Accept-Encoding: gzip, deflate, br, zstd' \
+	  -H 'Referer: https://robinhood.com/' \
+	  -H 'X-Hyper-Ex: enabled' \
+	  -H 'Origin: https://robinhood.com' \
+	  -H 'Sec-GPC: 1' \
+	  -H 'Connection: keep-alive' \
+	  -H 'Sec-Fetch-Dest: empty' \
+	  -H 'Sec-Fetch-Mode: cors' \
+	  -H 'Sec-Fetch-Site: same-site' \
+	  -H 'TE: trailers'
 }
 
 
@@ -80,23 +96,32 @@ tradingActive() {
 }
 
 
+ingestFromFile() {
+	local -a lines
+	readarray -t lines <"$OUTPUT_FILE"
+	local i
+	for ((i=0; i<${#DATA[@]}; i++)); do
+		declare -g ${DATA[$i]}="${lines[$i]}"
+		[[ -z ${!DATA[$i]} ]] && must_query=1
+	done
+}
+
 
 getInstruments() {
 	[[ ! $1 ]] && error "No symbol supplied"
 
-	if [[ ! "$json_instruments" ]]; then
-		json_instruments=$(query "https://api.robinhood.com/instruments/?symbol=$1")
-		write_needed=1
-	fi
+	json_instruments=$(query "https://api.robinhood.com/instruments/?symbol=$1")
+	write_needed=1
 	[[ ! "$json_instruments" ]] && error "Unable to fetch json_instruments"
 	
+	local -a data=(name all_day_tradability instrument_id)
 	local -a jq_lines
 	readarray -t jq_lines <<<"$(jq -r '.results[0] | .simple_name, .all_day_tradability, .id' <<<"$json_instruments")"
-	name=${jq_lines[0]}
-	all_day_tradability=${jq_lines[1]}
-	instrument_id=${jq_lines[2]}
+	local i
+	for ((i=0; i<${#data[@]}; i++)); do
+		declare -g ${data[$i]}="${jq_lines[$i]}"
+	done
 }
-
 
 
 getQuote() {
@@ -105,7 +130,6 @@ getQuote() {
 		*)	getQuoteFromAPI $@ ;;
 	esac
 }
-
 
 
 getQuoteFromAPI() {
@@ -133,22 +157,20 @@ getQuoteFromAPI() {
 getQuoteFromBonfire() {
 	[[ ! $1 ]] && error "No symbol supplied"
 
-	getInstruments $1
-	
-	[[ ! $instrument_id ]] && error "Unable to determine instrument_id"
+		if [[ $must_query ]] || okayToQuery; then
+			getInstruments $1
+			json_quotes=$(query "https://bonfire.robinhood.com/instruments/$instrument_id/detail-page-live-updating-data/?display_span=day&hide_extended_hours=false")
+			write_needed=1
+		[[ ! "$json_quotes" ]] && error "Unable to fetch json_quotes"
 
-	if [[ ! "$json_quotes" ]] || okayToQuery; then
-		json_quotes=$(query "https://bonfire.robinhood.com/instruments/$instrument_id/detail-page-live-updating-data/?display_span=day&hide_extended_hours=false")
-		write_needed=1
-	else
-		json_quotes=$(sed -n 2p "$OUTPUT_FILE")
+		local -a data=(price diff_string)
+		local -a jq_lines
+		readarray -t jq_lines <<<"$(jq -r '.chart_section.default_display | .primary_value.value, .tertiary_value.main.value // .secondary_value.main.value' <<<"$json_quotes")"
+		local i
+		for ((i=0; i<${#data[$i]}; i++)); do
+			declare -g ${data[$i]}="${jq_lines[$i]}"
+		done
 	fi
-	[[ ! "$json_quotes" ]] && error "Unable to fetch json_quotes"
-
-	local -a jq_lines
-	readarray -t jq_lines <<<"$(jq -r '.chart_section.default_display | .primary_value.value, .tertiary_value.main.value // .secondary_value.main.value' <<<"$json_quotes")"
-	price=${jq_lines[0]}
-	diff_string=${jq_lines[1]}
 }
 
 
@@ -328,21 +350,33 @@ outputFromBonfire() {
 
 
 	if [[ $write_needed -eq 1 ]]; then
-		printf "%s\n%s\n%s" "$json_instruments" "$json_quotes" "$current_phase" >"$OUTPUT_FILE"
+		outputToFile
 	fi
 }
 
+
+outputToFile() {
+	printf "%s\n%s\n%s\n%s\n%s\n%s" \
+		"$name" \
+		"$instrument_id" \
+		"$all_day_tradability" \
+		"$price" \
+		"$diff_string" \
+		"$current_phase" \
+			>"$OUTPUT_FILE"
+}
+
+
+if [[ ! $SYMBOL ]]; then
+	error "No symbol supplied"
+fi
 
 
 if [[ ! -f "$OUTPUT_FILE" ]]; then
 	>"$OUTPUT_FILE"
 fi
 
-readarray -t lines <"$OUTPUT_FILE"
-json_instruments=${lines[0]}
-json_quotes=${lines[1]}
-logged_phase=${lines[2]}
-unset lines
+ingestFromFile
 
 readarray -td "$DELIM" date_output <<<"$(TZ="America/New_York" date "+%w$DELIM%s$DELIM%_H*60**2+%_M*60+%_S")"
 day=${date_output[0]}
