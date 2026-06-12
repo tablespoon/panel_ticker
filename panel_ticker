@@ -10,7 +10,11 @@ RED_COLOR="#FF5555"
 SUBTEXT_SIZE="9pt"
 SEPARATOR="   : :   "
 
-SYMBOL=${1^^}
+SECONDS_PER_SYMBOL=5
+
+SYMBOLS=( ${@^^} )
+SYMBOL=${SYMBOLS[$(($(date +%s) % ($SECONDS_PER_SYMBOL*${#SYMBOLS[@]})/$SECONDS_PER_SYMBOL))]}
+
 SLEEP_TIME=10 # minimum number of seconds between queries
 START_TIME=4:00
 OPENING_BELL_TIME=9:30
