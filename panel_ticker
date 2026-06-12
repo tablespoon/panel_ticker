@@ -161,15 +161,20 @@ getQuoteFromAPI() {
 getQuoteFromBonfire() {
 	[[ ! $1 ]] && error "No symbol supplied"
 
-		if [[ $must_query ]] || okayToQuery; then
-			getInstruments $1
-			json_quotes=$(query "https://bonfire.robinhood.com/instruments/$instrument_id/detail-page-live-updating-data/?display_span=day&hide_extended_hours=false")
-			write_needed=1
-		[[ ! "$json_quotes" ]] && error "Unable to fetch json_quotes"
+	if [[ $must_query ]] || okayToQuery; then
+		getInstruments $1
+		json_quotes=$(query "https://bonfire.robinhood.com/instruments/$instrument_id/detail-page-live-updating-data/?display_span=day&hide_extended_hours=false")
+		write_needed=1
 
 		local -a data=(price diff_string)
 		local -a jq_lines
 		readarray -t jq_lines <<<"$(jq -r '.chart_section.default_display | .primary_value.value, .tertiary_value.main.value // .secondary_value.main.value' <<<"$json_quotes")"
+		if [[ ${#data[@]} -ne ${#jq_lines[@]} || ${#jq_lines[@]} =~ null ]]; then
+			echo "Unable to fetch all data; falling back to cached data if available" 1>&2
+			unset write_needed
+			return 1
+		fi
+
 		local i
 		for ((i=0; i<${#data[$i]}; i++)); do
 			declare -g ${data[$i]}="${jq_lines[$i]}"
@@ -360,6 +365,9 @@ outputFromBonfire() {
 
 
 outputToFile() {
+	if ! [[ $name && $instrument_id && $all_day_tradability && $price && $diff_string && $current_phase ]]; then
+		return 1
+	fi
 	printf "%s\n%s\n%s\n%s\n%s\n%s" \
 		"$name" \
 		"$instrument_id" \
