@@ -368,7 +368,7 @@ outputToFile() {
 	if ! [[ $name && $instrument_id && $all_day_tradability && $price && $diff_string && $current_phase ]]; then
 		return 1
 	fi
-	printf "%s\n%s\n%s\n%s\n%s\n%s" \
+	printf "%s\n%s\n%s\n%s\n%s\n%s\n" \
 		"$name" \
 		"$instrument_id" \
 		"$all_day_tradability" \
