@@ -116,7 +116,7 @@ getInstruments() {
 
 	json_instruments=$(query "https://api.robinhood.com/instruments/?symbol=$1")
 	write_needed=1
-	[[ ! "$json_instruments" ]] && error "Unable to fetch json_instruments"
+	[[ ! "$json_instruments" ]] && echo "Unable to fetch json_instruments" 1>&2
 	
 	local -a data=(name all_day_tradability instrument_id)
 	local -a jq_lines
@@ -133,6 +133,7 @@ getQuote() {
 		[1yY])	getQuoteFromBonfire $@ ;;
 		*)	getQuoteFromAPI $@ ;;
 	esac
+	return $?
 }
 
 
@@ -154,6 +155,7 @@ getQuoteFromAPI() {
 	prev_close=$(jq -r '.previous_close' <<<"$json_quotes")
 	price_diff=$(bc -l <<<"${price#$} - $prev_close")
 	percent_diff=$(bc -l <<<"$price_diff / $prev_close * 100")
+	return 0
 }
 
 
@@ -180,6 +182,7 @@ getQuoteFromBonfire() {
 			declare -g ${data[$i]}="${jq_lines[$i]}"
 		done
 	fi
+	return 0
 }
 
 
@@ -403,4 +406,5 @@ daily_end_second=$(convertToSeconds $END_TIME)
 seconds_in_day=$(convertToSeconds 24)
 current_phase=$(getCurrentPhase)
 
-getQuote $SYMBOL && output
+getQuote $SYMBOL || ingestFromFile
+output
