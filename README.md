@@ -7,7 +7,7 @@ Single-line, API-powered stock ticker intended for use with GNOME Shell and the 
 
 Install Executor (https://extensions.gnome.org/extension/2932/executor/) and configure it to run panel_ticker every second.
 
-Multiple ticker symbols may be supplied to panel_ticker as arguments; one will be displayed at a time for the duration defined by SECONDS_PER_SYMBOL:
+Multiple ticker symbols may be supplied to panel_ticker as arguments; each will be displayed for the duration defined by SECONDS_PER_SYMBOL:
 * `path/to/panel_ticker aapl amzn`
 
 ![screenshot_config](screenshot_config.png?raw=true "Screenshot of config")
