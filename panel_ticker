@@ -2,7 +2,8 @@
  
 # https://github.com/tablespoon/panel_ticker
 
-USE_BONFIRE=1
+SECONDS_PER_SYMBOL=7 # seconds each symbol will be shown
+SLEEP_TIME=10 # minimum number of seconds between queries
 
 SYMBOL_COLOR="#BBBBBB"
 GREEN_COLOR="lightgreen"
@@ -10,22 +11,19 @@ RED_COLOR="#FF5555"
 SUBTEXT_SIZE="9pt"
 SEPARATOR="   : :   "
 
-SECONDS_PER_SYMBOL=10
-
 SYMBOLS=( ${@^^} )
 SYMBOL=${SYMBOLS[$(($(date +%s) % ($SECONDS_PER_SYMBOL*${#SYMBOLS[@]})/$SECONDS_PER_SYMBOL))]}
 
-SLEEP_TIME=10 # minimum number of seconds between queries
-START_TIME=4:00
-OPENING_BELL_TIME=9:30
-CLOSING_BELL_TIME=16:00
-END_TIME=20:00
 OUTPUT_FILE="/tmp/$(basename $0)-${SYMBOL}"
+DATA=(name instrument_id all_day_tradability price diff_string)
 
-USER_AGENT="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)"
-DELIM="#"
+TODAY_CACHE="/tmp/market_hours_today"
+NEXT_CACHE="/tmp/market_hours_next"
 
-DATA=(name instrument_id all_day_tradability price diff_string logged_phase)
+today_date=$(TZ=America/New_York date +%Y-%m-%d)
+now=$(date +%s)
+today_cache_date=$(TZ=America/New_York date -r "$TODAY_CACHE" +%Y-%m-%d 2>/dev/null)
+next_cache_date=$(TZ=America/New_York date -r "$NEXT_CACHE" +%Y-%m-%d 2>/dev/null)
 
 
 error() {
@@ -53,18 +51,6 @@ query() {
 }
 
 
-convertToSeconds() {
-	if [[ ! $1 ]]; then
-		return 1
-	fi
-
-	local time
-	readarray -td : time <<<"$1"
-
-	echo $(( time[0]*60**2 + time[1]*60 + time[2] ))
-}
-
-
 convertFromSeconds() {
 	if [[ ! $1 ]]; then
 		return 1
@@ -78,9 +64,117 @@ convertFromSeconds() {
 }
 
 
+getHours() {
+	local endpoint=$1
+	local json=$(query "$endpoint" | jq)
+	# fix pre-market start time
+	json=$(sed -e 's/\("extended_opens_at":.\+T\)11:/\108:/' <<<"$json")
+	echo "$json"
+}
+
+
+getMarketStatus() {
+	# get today's json
+	if [[ $today_date != $today_cache_date ]]; then
+		local query=1
+		local market_data=$(query "https://api.robinhood.com/markets/XNAS/")
+		local today_endpoint=$(jq -r ".todays_hours" <<<"$market_data")
+		local today_json=$(getHours "$today_endpoint" | tee "$TODAY_CACHE")
+	else
+		local today_json=$(<"$TODAY_CACHE")
+	fi
+
+
+	# get next open day's json
+	if [[ $query || $today_date != $next_cache_date ]]; then
+		local next_open_hours=$(awk -F'"' '/"next_open_hours"/ { print $4 }' <<<"$today_json")
+		local next_json=$(getHours "$next_open_hours" | tee "$NEXT_CACHE")
+	else
+		local next_json=$(<"$NEXT_CACHE")
+	fi
+
+
+	# grok order and timings of market phases
+	local data=$(grep -Eh '"(all_day_|extended_)?(opens|closes)_at"' <<-_EOF_ \
+		| grep -v '"null"' \
+		| awk -F '"' '{print $4 "," $2}'
+		$today_json
+		$next_json
+	_EOF_
+	)
+
+
+	# sort phases chronologically
+	local pair
+	data=$(for pair in $data; do
+		date -d "${pair%%,*}" "+%s,${pair##*,}"
+	done | sort -n)
+
+	for pair in $data; do
+		local -a phase_times+=("${pair%%,*}")
+		local -a phase_names+=("${pair##*,}")
+	done
+
+
+	# discern current and next phases
+	local i
+	local phase
+	local next_phase
+	local time_left
+	for ((i=0; i<${#phase_times[@]}; i++)); do
+		if (( $now >= ${phase_times[$i]} )); then
+			case ${phase_names[$i]} in
+				all_day_opens_at) overnight="overnight";;
+				all_day_closes_at) unset overnight;;
+				extended_opens_at) phase="pre-market"; extended="after-hours";;
+				extended_closes_at) phase="${overnight:-closed}"; unset extended;;
+				opens_at) phase="open";;
+				closes_at) phase="${extended:-closed}"
+			esac
+		elif [[ ! $next_phase ]]; then
+			case ${phase_names[$i]} in
+				all_day_opens_at)
+					if [[ ${phase_names[$((i-1))]} == "all_day_closes_at" ]]; then
+						continue
+					else
+						next_phase="overnight begins"
+					fi
+				;;
+				all_day_closes_at)
+					if [[ ${phase_names[$((i+1))]} == "all_day_opens_at" ]]; then
+						continue
+					else
+						next_phase="trading ends"
+					fi
+				;;
+				extended_opens_at) next_phase="pre-market begins";;
+				extended_closes_at)
+					if [[ $overnight ]]; then
+						next_phase="overnight begins"
+					else
+						next_phase="trading ends"
+					fi
+				;;
+				opens_at) next_phase="opening bell";;
+				closes_at)
+					if [[ $extended ]]; then
+						next_phase="after-hours begins"
+					else
+						next_phase="trading ends"
+					fi
+				;;
+			esac
+			time_left=$(convertFromSeconds "$((${phase_times[$i]} - $now))")
+		fi
+	done
+
+	market_status="$phase; $next_phase in $time_left"
+}
+
+
 okayToQuery() {
-	local output_file_age=$(( current_second - $(date -r "$OUTPUT_FILE" +%s) ))
-	if ( tradingActive || [[ $logged_phase != "0" ]] ) && [[ $output_file_age -gt $SLEEP_TIME ]]; then
+	local output_file_age=$(( $now - $(date -r "$OUTPUT_FILE" +%s) ))
+	if tradingActive && (( $output_file_age >= $SLEEP_TIME )); then
 		return 0
 	fi
 	return 1
@@ -88,13 +182,8 @@ okayToQuery() {
 
 
 tradingActive() {
-	if [[ $day == [1-5] ]]; then
-		if [[ "$USE_BONFIRE" == [1yY] && "$all_day_tradability" == "tradable" ]]; then
-			return 0
-		fi
-		if (( current_second_in_day >= daily_start_second && current_second_in_day < daily_end_second )); then
-			return 0
-		fi
+	if [[ $extended || $overnight && $all_day_tradability == "tradable" ]]; then
+		return 0
 	fi
 	return 1
 }
@@ -129,38 +218,6 @@ getInstruments() {
 
 
 getQuote() {
-	case $USE_BONFIRE in
-		[1yY])	getQuoteFromBonfire $@ ;;
-		*)	getQuoteFromAPI $@ ;;
-	esac
-	return $?
-}
-
-
-getQuoteFromAPI() {
-	[[ ! $1 ]] && error "No symbol supplied"
-
-	getInstruments $1
-	
-	if [[ ! "$json_quotes" ]] || okayToQuery; then
-		json_quotes=$(query "https://api.robinhood.com/marketdata/quotes/$1/")
-		write_needed=1
-	else
-		json_quotes=$(sed -n 2p "$OUTPUT_FILE")
-	fi
-	[[ ! "$json_quotes" ]] && error "Unable to fetch json_quotes"
-
-	price=$(jq -r '(.last_extended_hours_trade_price // .last_trade_price)' <<<"$json_quotes")
-	price=$(printf "$%.2f" "$price")
-	prev_close=$(jq -r '.previous_close' <<<"$json_quotes")
-	price_diff=$(bc -l <<<"${price#$} - $prev_close")
-	percent_diff=$(bc -l <<<"$price_diff / $prev_close * 100")
-	return 0
-}
-
-
-
-getQuoteFromBonfire() {
 	[[ ! $1 ]] && error "No symbol supplied"
 
 	if [[ $must_query ]] || okayToQuery; then
@@ -186,138 +243,7 @@ getQuoteFromBonfire() {
 }
 
 
-getCurrentPhase() {
-	if [[ $day == [1-5] ]]; then
-		if (( current_second_in_day < daily_start_second || current_second_in_day >= daily_end_second )); then
-			echo 0 # closed
-		elif (( current_second_in_day >= daily_start_second && current_second_in_day < opening_bell_second )); then
-			echo 1 # pre-market
-		elif (( current_second_in_day >= opening_bell_second && current_second_in_day < closing_bell_second )); then
-			echo 2 # open
-		elif (( current_second_in_day >= closing_bell_second && current_second_in_day < daily_end_second )); then
-			echo 3 # after-hours
-		fi
-	else
-		echo 0 # closed
-	fi
-}
-
-
-timeToNextPhase() {
-	case $current_phase in
-		0) # closed
-			if (( current_second_in_day < daily_start_second )) && [[ $day == [1-5] ]]; then
-				next_open_day=today
-			elif [[ $day == [0-4] ]]; then
-				next_open_day=tomorrow
-			else
-				next_open_day=monday
-			fi
-		
-			exact_open_second=$(TZ="America/New_York" date -d "$next_open_day $START_TIME" +%s)
-			echo $(( exact_open_second - current_second ))
-			;;
-		1) # pre-market
-			echo $(( opening_bell_second - current_second_in_day )) ;;
-		2) # open
-			echo $(( closing_bell_second - current_second_in_day )) ;;
-		3) # after-hours
-			echo $(( daily_end_second - current_second_in_day )) ;;
-	esac
-}
-
-
-outputCurrentPhase() {
-	case $current_phase in
-		0) # closed
-			echo "closed" ;;
-		1) # pre-market
-			echo "pre-market" ;;
-		2) # open
-			echo "open" ;;
-		3) # after-hours
-			echo "after-hours" ;;
-	esac
-}
-
-
-outputNextPhase() {
-	case $current_phase in
-		0) # closed
-			echo "trading begins" ;;
-		1) # pre-market
-			echo "opening bell" ;;
-		2) # open
-			echo "closing bell" ;;
-		3) # after-hours
-			echo "trading ends" ;;
-	esac
-}
-
-
 output() {
-	case $USE_BONFIRE in
-		[1yY])	outputFromBonfire $@ ;;
-		*)	outputFromAPI $@ ;;
-	esac
-}
-
-
-outputFromAPI() {
-	local span_params
-	local color="white"
-	local arrow="▶"
-	local sign=" "
-	if (( $(bc -l <<<"$price_diff > 0") )); then
-		color="$GREEN_COLOR"
-		arrow="▲"
-		sign="+"
-	elif (( $(bc -l <<<"$price_diff < 0") )); then
-		color="$RED_COLOR"
-		arrow="▼"
-		sign="-"
-	fi
-	price_diff=${price_diff#-}
-	percent_diff=${percent_diff#-}
-
-	diff_string=$(printf "%s$%.2f (%s%.2f%%)" "$sign" "$price_diff" "$sign" "$percent_diff")
-
-	local status_string="$(outputCurrentPhase); $(outputNextPhase) in $(convertFromSeconds $(timeToNextPhase))"
-
-
-
-	# output security
-	span_params="size='$SUBTEXT_SIZE' color='$SYMBOL_COLOR'"
-	printf "<executor.markup.true>%s <span %s>(%s)</span>" \
-		"$name" "$span_params" "$SYMBOL"
-
-	printf "$SEPARATOR"
-
-	# output price details
-	span_params="size='$SUBTEXT_SIZE' color='$color'"
-	printf "%s  <span %s>%s%s</span>" \
-		"$price" "$span_params" "$arrow" "$diff_string"
-
-	printf "$SEPARATOR"
-
-	# output market status
-	printf "%s\n" \
-		 "$status_string"
-
-
-
-	if [[ $current_phase != $logged_phase ]]; then
-		write_needed=1
-	fi
-
-
-	if [[ $write_needed -eq 1 ]]; then
-		printf "%s\n%s\n%s" "$json_instruments" "$json_quotes" "$current_phase" >"$OUTPUT_FILE"
-	fi
-}
-
-
-outputFromBonfire() {
 	local span_params
 	local color="white"
 	local arrow="▶"
@@ -332,9 +258,6 @@ outputFromBonfire() {
 		;;
 	esac
 
-	local status_string="$(outputCurrentPhase); $(outputNextPhase) in $(convertFromSeconds $(timeToNextPhase))"
-
-
 
 	# output security
 	span_params="size='$SUBTEXT_SIZE' color='$SYMBOL_COLOR'"
@@ -352,13 +275,7 @@ outputFromBonfire() {
 
 	# output market status
 	printf "%s\n" \
-		 "$status_string"
-
-
-
-	if [[ $current_phase != $logged_phase ]]; then
-		write_needed=1
-	fi
+		 "$market_status"
 
 
 	if [[ $write_needed -eq 1 ]]; then
@@ -368,7 +285,7 @@ outputFromBonfire() {
 
 
 outputToFile() {
-	if ! [[ $name && $instrument_id && $all_day_tradability && $price && $diff_string && $current_phase ]]; then
+	if ! [[ $name && $instrument_id && $all_day_tradability && $price && $diff_string ]]; then
 		return 1
 	fi
 	printf "%s\n%s\n%s\n%s\n%s\n%s\n" \
@@ -377,7 +294,6 @@ outputToFile() {
 		"$all_day_tradability" \
 		"$price" \
 		"$diff_string" \
-		"$current_phase" \
 			>"$OUTPUT_FILE"
 }
 
@@ -391,20 +307,8 @@ if [[ ! -f "$OUTPUT_FILE" ]]; then
 	>"$OUTPUT_FILE"
 fi
 
+
+getMarketStatus
 ingestFromFile
-
-readarray -td "$DELIM" date_output <<<"$(TZ="America/New_York" date "+%w$DELIM%s$DELIM%_H*60**2+%_M*60+%_S")"
-day=${date_output[0]}
-current_second=${date_output[1]}
-current_second_in_day=$(( ${date_output[2]} ))
-unset date_output
-
-daily_start_second=$(convertToSeconds $START_TIME)
-opening_bell_second=$(convertToSeconds $OPENING_BELL_TIME)
-closing_bell_second=$(convertToSeconds $CLOSING_BELL_TIME)
-daily_end_second=$(convertToSeconds $END_TIME)
-seconds_in_day=$(convertToSeconds 24)
-current_phase=$(getCurrentPhase)
-
 getQuote $SYMBOL || ingestFromFile
 output
