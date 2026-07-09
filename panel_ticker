@@ -20,10 +20,7 @@ DATA=(name instrument_id all_day_tradability price diff_string)
 TODAY_CACHE="/tmp/market_hours_today"
 NEXT_CACHE="/tmp/market_hours_next"
 
-today_date=$(TZ=America/New_York date +%Y-%m-%d)
-now=$(date +%s)
-today_cache_date=$(TZ=America/New_York date -r "$TODAY_CACHE" +%Y-%m-%d 2>/dev/null)
-next_cache_date=$(TZ=America/New_York date -r "$NEXT_CACHE" +%Y-%m-%d 2>/dev/null)
+NOW=$(date +%s)
 
 
 error() {
@@ -74,23 +71,33 @@ getHours() {
 
 
 getMarketStatus() {
+	local today_date=$(date -u +%Y-%m-%d)
+	local today_cache_date=$(grep -Po '(?<="date": ")[^"]+' "$TODAY_CACHE" 2>/dev/null)
+	local next_cache_date=$(grep -Po '(?<="date": ")[^"]+' "$NEXT_CACHE" 2>/dev/null)
+
 	# get today's json
-	if [[ $today_date != $today_cache_date ]]; then
-		local query=1
-		local market_data=$(query "https://api.robinhood.com/markets/XNAS/")
-		local today_endpoint=$(jq -r ".todays_hours" <<<"$market_data")
-		local today_json=$(getHours "$today_endpoint" | tee "$TODAY_CACHE")
+	local query
+	local market_data
+	local today_endpoint
+	local today_json
+	if [[ $today_date == $today_cache_date ]]; then
+		query=1
+		market_data=$(query "https://api.robinhood.com/markets/XNAS/")
+		today_endpoint=$(jq -r ".todays_hours" <<<"$market_data")
+		today_json=$(getHours "$today_endpoint" | tee "$TODAY_CACHE")
 	else
-		local today_json=$(<"$TODAY_CACHE")
+		today_json=$(<"$TODAY_CACHE")
 	fi
 
 
 	# get next open day's json
+	local next_open_hours
+	local next_json
 	if [[ $query || $today_date != $next_cache_date ]]; then
-		local next_open_hours=$(awk -F'"' '/"next_open_hours"/ { print $4 }' <<<"$today_json")
-		local next_json=$(getHours "$next_open_hours" | tee "$NEXT_CACHE")
+		next_open_hours=$(grep -Po '(?<="next_open_hours": ")[^"]+' <<<"$today_json")
+		next_json=$(getHours "$next_open_hours" | tee "$NEXT_CACHE")
 	else
-		local next_json=$(<"$NEXT_CACHE")
+		next_json=$(<"$NEXT_CACHE")
 	fi
 
 
@@ -98,8 +105,8 @@ getMarketStatus() {
 	local data=$(grep -Eh '"(all_day_|extended_)?(opens|closes)_at"' <<-_EOF_ \
 		| grep -v '"null"' \
 		| awk -F '"' '{print $4 "," $2}'
-		$today_json
-		$next_json
+			$today_json
+			$next_json
 	_EOF_
 	)
 
@@ -122,7 +129,7 @@ getMarketStatus() {
 	local next_phase
 	local time_left
 	for ((i=0; i<${#phase_times[@]}; i++)); do
-		if (( $now >= ${phase_times[$i]} )); then
+		if (( $NOW >= ${phase_times[$i]} )); then
 			case ${phase_names[$i]} in
 				all_day_opens_at) overnight="overnight";;
 				all_day_closes_at) unset overnight;;
@@ -164,7 +171,7 @@ getMarketStatus() {
 					fi
 				;;
 			esac
-			time_left=$(convertFromSeconds "$((${phase_times[$i]} - $now))")
+			time_left=$(convertFromSeconds "$((${phase_times[$i]} - $NOW))")
 		fi
 	done
 
@@ -173,7 +180,7 @@ getMarketStatus() {
 
 
 okayToQuery() {
-	local output_file_age=$(( $now - $(date -r "$OUTPUT_FILE" +%s) ))
+	local output_file_age=$(( $NOW - $(date -r "$OUTPUT_FILE" +%s) ))
 	if tradingActive && (( $output_file_age >= $SLEEP_TIME )); then
 		return 0
 	fi
