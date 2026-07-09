@@ -75,12 +75,13 @@ getMarketStatus() {
 	local today_cache_date=$(grep -Po '(?<="date": ")[^"]+' "$TODAY_CACHE" 2>/dev/null)
 	local next_cache_date=$(grep -Po '(?<="date": ")[^"]+' "$NEXT_CACHE" 2>/dev/null)
 
+
 	# get today's json
 	local query
 	local market_data
 	local today_endpoint
 	local today_json
-	if [[ $today_date == $today_cache_date ]]; then
+	if [[ $today_date != $today_cache_date ]]; then
 		query=1
 		market_data=$(query "https://api.robinhood.com/markets/XNAS/")
 		today_endpoint=$(jq -r ".todays_hours" <<<"$market_data")
@@ -93,7 +94,7 @@ getMarketStatus() {
 	# get next open day's json
 	local next_open_hours
 	local next_json
-	if [[ $query || $today_date != $next_cache_date ]]; then
+	if [[ $query || ! $next_cache_date ]]; then
 		next_open_hours=$(grep -Po '(?<="next_open_hours": ")[^"]+' <<<"$today_json")
 		next_json=$(getHours "$next_open_hours" | tee "$NEXT_CACHE")
 	else
