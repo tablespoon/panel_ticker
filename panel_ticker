@@ -21,6 +21,7 @@ TODAY_CACHE="/tmp/market_hours_today"
 NEXT_CACHE="/tmp/market_hours_next"
 
 NOW=$(date +%s)
+[ -t 0 ] || EXECUTOR='1'
 
 
 error() {
@@ -269,20 +270,28 @@ output() {
 
 	# output security
 	span_params="size='$SUBTEXT_SIZE' color='$SYMBOL_COLOR'"
-	printf "<executor.markup.true>%s <span %s>(%s)</span>" \
-		"$name" "$span_params" "$SYMBOL"
+	printf "%s%s %s(%s)%s" \
+		"${EXECUTOR:+<executor.markup.true>}" \
+		"$name" \
+		"${EXECUTOR:+<span $span_params>}" \
+		"$SYMBOL" \
+		"${EXECUTOR:+</span>}"
 
 	printf "$SEPARATOR"
 
 	# output price details
 	span_params="size='$SUBTEXT_SIZE' color='$color'"
-	printf "%s  <span %s>%s%s</span>" \
-		"$price" "$span_params" "$arrow" "$diff_string"
+	printf "%s  %s%s%s%s" \
+		"$price" \
+		"${EXECUTOR:+<span $span_params>}" \
+		"$arrow" \
+		"$diff_string" \
+		"${EXECUTOR:+</span>}"
 
 	printf "$SEPARATOR"
 
 	# output market status
-	printf "%s\n" \
+	printf "%s${EXECUTOR:+\t}\n" \
 		 "$market_status"
 
 
