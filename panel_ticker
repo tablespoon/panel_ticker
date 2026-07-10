@@ -11,21 +11,14 @@ RED_COLOR="#FF5555"
 SUBTEXT_SIZE="9pt"
 SEPARATOR="   : :   "
 
-SYMBOLS=( ${@^^} )
-SYMBOL=${SYMBOLS[$(($(date +%s) % ($SECONDS_PER_SYMBOL*${#SYMBOLS[@]})/$SECONDS_PER_SYMBOL))]}
-
-OUTPUT_FILE="/tmp/$(basename $0)-${SYMBOL}"
-DATA=(name instrument_id all_day_tradability price diff_string)
-
 TODAY_CACHE="/tmp/market_hours_today"
 NEXT_CACHE="/tmp/market_hours_next"
 
 NOW=$(date +%s)
-[ -t 0 ] || EXECUTOR='1'
 
 
 error() {
-	echo "$0 Error: $@" 1>&2
+	echo "$0 error: $@" 1>&2
 	exit 1
 }
 
@@ -202,15 +195,16 @@ ingestFromFile() {
 	local -a lines
 	readarray -t lines <"$OUTPUT_FILE"
 	local i
-	for ((i=0; i<${#DATA[@]}; i++)); do
-		declare -g ${DATA[$i]}="${lines[$i]}"
-		[[ -z ${!DATA[$i]} ]] && must_query=1
+	local -a data=(name instrument_id all_day_tradability price diff_string)
+	for ((i=0; i<${#data[@]}; i++)); do
+		declare -g ${data[$i]}="${lines[$i]}"
+		[[ -z ${!data[$i]} ]] && must_query=1
 	done
 }
 
 
 getInstruments() {
-	[[ ! $1 ]] && error "No symbol supplied"
+	[[ ! $1 ]] && error "no symbol supplied"
 
 	json_instruments=$(query "https://api.robinhood.com/instruments/?symbol=$1")
 	write_needed=1
@@ -227,7 +221,7 @@ getInstruments() {
 
 
 getQuote() {
-	[[ ! $1 ]] && error "No symbol supplied"
+	[[ ! $1 ]] && error "no symbol supplied"
 
 	if [[ $must_query ]] || okayToQuery; then
 		getInstruments $1
@@ -253,6 +247,7 @@ getQuote() {
 
 
 output() {
+	[ -t 0 ] || local executor='1'
 	local span_params
 	local color="white"
 	local arrow="▶"
@@ -271,11 +266,11 @@ output() {
 	# output security
 	span_params="size='$SUBTEXT_SIZE' color='$SYMBOL_COLOR'"
 	printf "%s%s %s(%s)%s" \
-		"${EXECUTOR:+<executor.markup.true>}" \
+		"${executor:+<executor.markup.true>}" \
 		"$name" \
-		"${EXECUTOR:+<span $span_params>}" \
+		"${executor:+<span $span_params>}" \
 		"$SYMBOL" \
-		"${EXECUTOR:+</span>}"
+		"${executor:+</span>}"
 
 	printf "$SEPARATOR"
 
@@ -283,15 +278,15 @@ output() {
 	span_params="size='$SUBTEXT_SIZE' color='$color'"
 	printf "%s  %s%s%s%s" \
 		"$price" \
-		"${EXECUTOR:+<span $span_params>}" \
+		"${executor:+<span $span_params>}" \
 		"$arrow" \
 		"$diff_string" \
-		"${EXECUTOR:+</span>}"
+		"${executor:+</span>}"
 
 	printf "$SEPARATOR"
 
 	# output market status
-	printf "%s${EXECUTOR:+\t}\n" \
+	printf "%s${executor:+\t}\n" \
 		 "$market_status"
 
 
@@ -315,11 +310,15 @@ outputToFile() {
 }
 
 
-if [[ ! $SYMBOL ]]; then
-	error "No symbol supplied"
+
+if [[ ! $@ ]]; then
+	error "no symbol supplied"
 fi
+SYMBOLS=( ${@^^} )
+SYMBOL=${SYMBOLS[$(($(date +%s) % ($SECONDS_PER_SYMBOL*${#SYMBOLS[@]})/$SECONDS_PER_SYMBOL))]}
 
 
+OUTPUT_FILE="/tmp/$(basename $0)-$SYMBOL"
 if [[ ! -f "$OUTPUT_FILE" ]]; then
 	>"$OUTPUT_FILE"
 fi
