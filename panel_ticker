@@ -175,7 +175,7 @@ getMarketStatus() {
 
 
 okayToQuery() {
-	local output_file_age=$(( $NOW - $(date -r "$OUTPUT_FILE" +%s) ))
+	local output_file_age=$(( $NOW - $(date -r "$output_file" +%s) ))
 	if tradingActive && (( $output_file_age >= $SLEEP_TIME )); then
 		return 0
 	fi
@@ -193,7 +193,7 @@ tradingActive() {
 
 ingestFromFile() {
 	local -a lines
-	readarray -t lines <"$OUTPUT_FILE"
+	readarray -t lines <"$output_file"
 	local i
 	local -a data=(name instrument_id all_day_tradability price diff_string)
 	for ((i=0; i<${#data[@]}; i++)); do
@@ -269,7 +269,7 @@ output() {
 		"${executor:+<executor.markup.true>}" \
 		"$name" \
 		"${executor:+<span $span_params>}" \
-		"$SYMBOL" \
+		"$symbol" \
 		"${executor:+</span>}"
 
 	printf "$SEPARATOR"
@@ -306,7 +306,7 @@ outputToFile() {
 		"$all_day_tradability" \
 		"$price" \
 		"$diff_string" \
-			>"$OUTPUT_FILE"
+			>"$output_file"
 }
 
 
@@ -314,17 +314,17 @@ outputToFile() {
 if [[ ! $@ ]]; then
 	error "no symbol supplied"
 fi
-SYMBOLS=( ${@^^} )
-SYMBOL=${SYMBOLS[$(($(date +%s) % ($SECONDS_PER_SYMBOL*${#SYMBOLS[@]})/$SECONDS_PER_SYMBOL))]}
+symbols=( ${@^^} )
+symbol=${symbols[$(($(date +%s) % ($SECONDS_PER_SYMBOL*${#symbols[@]})/$SECONDS_PER_SYMBOL))]}
 
 
-OUTPUT_FILE="/tmp/$(basename $0)-$SYMBOL"
-if [[ ! -f "$OUTPUT_FILE" ]]; then
-	>"$OUTPUT_FILE"
+output_file="/tmp/$(basename $0)-$symbol"
+if [[ ! -f "$output_file" ]]; then
+	>"$output_file"
 fi
 
 
 getMarketStatus
 ingestFromFile
-getQuote $SYMBOL || ingestFromFile
+getQuote $symbol || ingestFromFile
 output
