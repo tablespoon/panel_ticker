@@ -98,7 +98,7 @@ getMarketStatus() {
 
 	# grok order and timings of market phases
 	local data=$(grep -Eh '"(all_day_|extended_)?(opens|closes)_at"' <<-_EOF_ \
-		| grep -v '"null"' \
+		| grep -Ev ': null,?$' \
 		| awk -F '"' '{print $4 "," $2}'
 			$today_json
 			$next_json
@@ -120,9 +120,9 @@ getMarketStatus() {
 
 	# discern current and next phases
 	local i
-	local phase
 	local next_phase
 	local time_left
+	local phase="closed"
 	for ((i=0; i<${#phase_times[@]}; i++)); do
 		if (( $NOW >= ${phase_times[$i]} )); then
 			case ${phase_names[$i]} in
