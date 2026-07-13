@@ -126,7 +126,7 @@ getMarketStatus() {
 	for ((i=0; i<${#phase_times[@]}; i++)); do
 		if (( $NOW >= ${phase_times[$i]} )); then
 			case ${phase_names[$i]} in
-				all_day_opens_at) overnight="overnight";;
+				all_day_opens_at) phase="overnight"; overnight="overnight";;
 				all_day_closes_at) unset overnight;;
 				extended_opens_at) phase="pre-market"; extended="after-hours";;
 				extended_closes_at) phase="${overnight:-closed}"; unset extended;;
